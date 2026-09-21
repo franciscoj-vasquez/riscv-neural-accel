@@ -1,0 +1,22 @@
+# Documentos que no se versionan (terceros / formales, no código de trabajo)
+/anteproyecto/
+/antecedentes/
+/normas/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# FPGA toolchains (ajustar según lo que se termine usando)
+*.jou
+*.log
+.Xil/
+vivado_*.str
+*.bit
+*.bin
+
+# Editores / OS
+.vscode/
+.DS_Store
+Thumbs.db
