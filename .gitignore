@@ -3,10 +3,16 @@
 /antecedentes/
 /normas/
 
+# Bitácora personal de trabajo (notas para armar el informe)
+/docs/bitacora.md
+
 # Python
 .venv/
 __pycache__/
 *.pyc
+
+# Dataset MNIST (lo descarga torchvision la primera vez que se entrena)
+/model/data/
 
 # FPGA toolchains (ajustar según lo que se termine usando)
 *.jou
