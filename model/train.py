@@ -77,7 +77,9 @@ def main():
     # Probado con 0.1: no mejoró validación ni la pérdida al cuantizar los pesos a int8.
     ap.add_argument("--weight-decay", type=float, default=0.0)
     ap.add_argument("--no-augment", action="store_true")
-    ap.add_argument("--seed", type=int, default=0)
+    # Semilla 1 y no 0: con la 0 y la 2, la receta deja 4 y 3 neuronas ocultas muertas (no se
+    # activan con ninguna imagen de MNIST); con la 1, ninguna. Se eligió por eso, no por accuracy.
+    ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", type=Path, default=HERE / "artifacts")
     args = ap.parse_args()
 
