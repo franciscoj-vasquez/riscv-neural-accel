@@ -6,6 +6,9 @@
 # Bitácora personal de trabajo (notas para armar el informe)
 /docs/bitacora.md
 
+# Guías personales de estudio (texto, figuras y el script que las genera)
+/docs/guia_cuantizacion/
+
 # Python
 .venv/
 __pycache__/
