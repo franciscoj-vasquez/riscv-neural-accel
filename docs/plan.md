@@ -113,9 +113,9 @@ Inferencia MNIST corriendo en RISC-V en FPGA, con ciclos por inferencia medidos 
 **Duración:** 2–3 semanas · **Entorno:** simulación + FPGA
 
 ### Conceptos de hardware a incorporar
-Interfaz de coprocesador (**PCPI = Pico Co-Processor Interface**, mecanismo propio de PicoRV32): handshake (`pcpi_valid`/`pcpi_insn`/`pcpi_rs1`/`pcpi_rs2`/`pcpi_wait`/`pcpi_ready`/`pcpi_wr`/`pcpi_rd`), decodificación de instrucción custom (espacio de opcode `custom-0`, reservado por el propio estándar RISC-V), stall del pipeline mientras se espera el resultado.
+Interfaz de coprocesador (**PCPI = Pico Co-Processor Interface**, mecanismo propio de PicoRV32): handshake (`pcpi_valid`/`pcpi_insn`/`pcpi_rs1`/`pcpi_rs2`/`pcpi_wait`/`pcpi_ready`/`pcpi_wr`/`pcpi_rd`), decodificación de instrucción custom (espacio de opcode `custom-0`, reservado por el propio estándar RISC-V), el core queda esperando mientras la unidad calcula el resultado.
 
-No es una arquitectura de "dos cores": sigue siendo un solo core con un solo PC, extendido con una unidad de ejecución externa (misma idea que un coprocesador matemático clásico tipo FPU) — no hay ejecución concurrente, el pipeline se detiene mientras el PCPI calcula.
+No es una arquitectura de "dos cores": sigue siendo un solo core con un solo PC, extendido con una unidad de ejecución externa (misma idea que un coprocesador matemático clásico tipo FPU) — no hay ejecución concurrente: el core queda esperando mientras el PCPI calcula.
 
 Es una técnica de tipo **SIMD / sub-word parallelism** (4 valores int8 empaquetados en un registro de 32 bits, una instrucción los procesa juntos) — no superescalar (PicoRV32 es single-issue, no tiene lógica de múltiple emisión que aprovechar).
 
@@ -277,7 +277,9 @@ CNN completa acelerada, bit-exacta. El acelerador pasa de "matmul engine" a "NPU
 
 ## Decisiones abiertas
 
-- [ ] Variante de la placa: Arty A7-35 vs. A7-100 (definido: **A7-100T**, elegido por margen de BRAM).
+- [x] Variante de la placa: Arty A7-35 vs. A7-100 (definido: **A7-100T**, elegido por margen de BRAM).
+- [x] Multiplicador del core, el mismo en los tres niveles: RV32I sin multiplicador vs. `ENABLE_MUL` vs. `ENABLE_FAST_MUL` (definido: **`ENABLE_FAST_MUL`**). Es el baseline más exigente: con `ENABLE_MUL` (40 ciclos por `MUL`), parte del speedup de los niveles acelerados vendría del multiplicador lento del baseline. Cabe con holgura: sintetizado solo el core, usa 4 de los 240 DSP y cumple 100 MHz después del ruteo (~134 MHz).
+- [x] Loop MAC del baseline: denso vs. saltear ceros (definido: **denso**). El 80,7 % de los píxeles de test vale 0: saltearlos evitaría ~80 % de las multiplicaciones de la capa 1, pero los ciclos pasarían a depender de la imagen y el baseline haría menos trabajo que los niveles acelerados. En el informe, mencionarlo como optimización posible y explicar por qué no se usó.
 - [ ] Simulador principal: Verilator vs. CocoTB+Icarus (o ambos por nivel).
 - [ ] Lenguaje RTL del acelerador.
 - [ ] Polling vs. interrupciones en la v1 de la NPU (recomendado: polling primero).

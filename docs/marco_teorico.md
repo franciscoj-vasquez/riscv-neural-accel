@@ -64,12 +64,12 @@ Tecnológicamente, esta integración es posible en concreto porque RISC-V es una
 
 ## Contexto del problema
 
-El costo de realizar inferencias mediante redes neuronales en microcontroladores y FPGAs puede medirse, al menos, por las siguientes dos metricas: 
+El costo de realizar inferencias mediante redes neuronales en microcontroladores y FPGAs puede medirse, al menos, por las siguientes dos métricas: 
 
  - Uso de la memoria disponible, para almacenar los pesos de las conexiones entre neuronas
  - Computacionalmente cuántas multiplicaciones-acumulación (MACs) por segundo puede sostener el hardware.
 
-La cuantización a enteros de 8 bits nos servirá como mecanismo para optimizar ambas metricas; la primera de ellas de manera trivial, y para la segunda permitiendo las posteriores aceleraciones ya introducidas. El costo de introducir esta tecnica seria esperable que se manifieste mediante una perdida en la precision del modelo - la cual se medira empiricamente iniciado el proyecto.
+La cuantización a enteros de 8 bits nos servirá como mecanismo para optimizar ambas métricas; la primera de ellas de manera trivial, y para la segunda permitiendo las posteriores aceleraciones ya introducidas. El costo de introducir esta técnica sería esperable que se manifieste mediante una pérdida en la exactitud del modelo - la cual se medirá empíricamente iniciado el proyecto.
 
 // TODOs Conexion? Faltaria aqui alguna separacion u algo por el estilo
 
@@ -87,18 +87,18 @@ $$y = \phi\!\left(\sum_{i=1}^{N} x_i\, w_i + b\right),$$
 
 donde $x_i$ son las entradas, $w_i$ los pesos, $b$ el sesgo (_bias_) y $\phi$ la función de activación. 
 
-Este proyecto utilizará **ReLU** (_Rectified Linear Unit_), $\phi(x) = \max(0, x)$ como funcion de activacion, lo cual es un estándar en redes de inferencia embebida por ser trivial de implementar en hardware, a diferencia de activaciones como sigmoide o tangente hiperbólica.
+Este proyecto utilizará **ReLU** (_Rectified Linear Unit_), $\phi(x) = \max(0, x)$ como función de activación, lo cual es un estándar en redes de inferencia embebida por ser trivial de implementar en hardware, a diferencia de activaciones como sigmoide o tangente hiperbólica.
 
-La operación que se repite una vez por cada entrada —multiplicar y sumar al acumulador— se conoce como **MAC** (_multiply-accumulate_), y es el tipo de operación dominante en el calculo del costo computacional de una red neuronal: una capa con $N$ entradas y $M$ neuronas ejecuta $N \times M$ MACs, $M$ sumas de bias y $M$ funciones de activación. 
+La operación que se repite una vez por cada entrada —multiplicar y sumar al acumulador— se conoce como **MAC** (_multiply-accumulate_), y es el tipo de operación dominante en el cálculo del costo computacional de una red neuronal: una capa con $N$ entradas y $M$ neuronas ejecuta $N \times M$ MACs, $M$ sumas de bias y $M$ funciones de activación. 
 
 ### La red que se utilizará
 
-Se utilizá como red de referencia una MLP de una unica capa oculta, 784→32→10, entrenada sobre MNIST. El tamaño de entrada (784 = 28×28 píxeles) y el de salida (10 clases) están determinados por el dataset y el problema, no son un parámetro de diseño; el tamaño de la capa oculta (32 neuronas) sí es una decisión deliberada, apoyada en los siguientes criterios: 
+Se utilizará como red de referencia una MLP de una única capa oculta, 784→32→10, entrenada sobre MNIST. El tamaño de entrada (784 = 28×28 píxeles) y el de salida (10 clases) están determinados por el dataset y el problema, no son un parámetro de diseño; el tamaño de la capa oculta (32 neuronas) sí es una decisión deliberada, apoyada en los siguientes criterios: 
 - El conteo total de pesos y bias moderadamente reducido, el cual mantiene acotado el presupuesto de memoria.
-- Se espera un buen nivel de exactitud con esas dimensiones de red, de manera tal que agrandar la red podria no suponer una mejora proporcional al costo de hardware adicional.
-- Al ser una potencia de dos ($2^5$), resultará en que los anchos de arreglo de MACs contemplados más adelante para la NPU (8 y 16) sean divisibles sin resto, evitando rondas parciales.
+- Se espera un buen nivel de exactitud con esas dimensiones de red, de manera tal que agrandar la red podría no suponer una mejora proporcional al costo de hardware adicional.
+- Al ser una potencia de dos ($2^5$), el tamaño de la capa oculta es múltiplo de los anchos de arreglo de MACs contemplados más adelante para la NPU (8 y 16): sus 32 neuronas, o sus 32 salidas cuando actúan como entradas de la capa siguiente, se reparten entre los MACs sin resto (las 784 entradas de la primera capa también: $784 = 16 \times 49$). La única ronda parcial aparece en la capa de salida, de 10 neuronas, si el arreglo reparte neuronas en lugar de entradas; aun así, desaprovecha menos del 1 % de la capacidad del arreglo (192 de 25.600 turnos de MAC).
 
-La Tabla 3.1 detalla el costo exacto por capa. El total de 25.408 MACs es la cifra de referencia usada en el resto de este documento para estimar tiempos de ejecución y paralelismo de hardware; los 42 bias, al ser dos órdenes de magnitud menos numerosos que los pesos, se acumulan en 32 bits sin impacto apreciable en el presupuesto de memoria (ver «Acumulación en int32 y requantización entre capas», más adelante).
+La Tabla 3.1 detalla el costo exacto por capa. El total de 25.408 MACs es la cifra de referencia usada en el resto de este documento para estimar tiempos de ejecución y paralelismo de hardware; los 42 bias, al ser dos órdenes de magnitud menos numerosos que los pesos, se guardan en 32 bits sin impacto apreciable en el presupuesto de memoria (168 bytes, frente a los 25.408 bytes de los pesos en int8) (ver «Acumulación en int32 y requantización entre capas», más adelante).
 
 | Capa | Entradas | Neuronas | Pesos (= MACs) | Bias | Parámetros |
 |---|---:|---:|---:|---:|---:|
@@ -122,7 +122,7 @@ La cuantización mapea un rango real $[x_{\min}, x_{\max}]$ a un rango entero de
 
 $$r = S\,(q - Z), \qquad q = \mathrm{round}\!\left(\frac{r}{S}\right) + Z,$$
 
-donde $r$ es el valor real y $q$ su representación entera, saturada al rango de 8 bits ($[-128,127]$ con signo, o $[0,255]$ sin signo, según corresponda). Los pesos suelen cuantizarse de forma **simétrica** ($Z = 0$), lo cual simplifica el hardware de multiplicación al eliminar el término de corrección cruzada que introduce un _zero-point_ distinto de cero; las activaciones posteriores a una ReLU (que solo toman valores no negativos) suelen cuantizarse de forma **asimétrica** ($Z \neq 0$), aprovechando mejor el rango de 8 bits disponible en vez de desperdiciar la mitad en valores negativos que nunca ocurren.
+donde $r$ es el valor real y $q$ su representación entera, saturada al rango de 8 bits ($[-128,127]$ con signo, o $[0,255]$ sin signo, según corresponda). Los pesos suelen cuantizarse de forma **simétrica** ($Z = 0$), lo cual simplifica el hardware de multiplicación al eliminar el término de corrección cruzada que introduce un _zero-point_ distinto de cero. Las activaciones posteriores a una ReLU, en cambio, solo toman valores no negativos, y el _zero-point_ que les conviene depende de cómo se guarden: en int8 (como en la especificación de TensorFlow Lite [9]) se cuantizan de forma **asimétrica**, con $Z = -128$, para no desperdiciar la mitad negativa del rango en valores que nunca ocurren; en uint8, en cambio, $Z = 0$ ya aprovecha los 256 valores disponibles. Es el caso de la entrada de este proyecto: cada píxel de MNIST, un entero de 0 a 255, es directamente su valor cuantizado, con $S = 1/255$ y $Z = 0$.
 
 ### Acumulación en int32 y requantización entre capas
 
@@ -134,25 +134,25 @@ que en punto flotante sería una simple multiplicación, pero que en hardware en
 
 ### El esquema de referencia: Jacob et al.
 
-El esquema de cuantización entera adoptado en este proyecto sigue el trabajo de Jacob et al. [1], que describe el método sobre el cual se basa la cuantización por defecto de TensorFlow Lite: cuantización post-entrenamiento (sin reentrenar la red), acumulación en 32 bits, y requantización mediante multiplicador de punto fijo. Para una red del tamaño de la usada en este proyecto, la pérdida de exactitud esperada frente a la versión en punto flotante es mínima — el propio checkpoint de validación bit-exacta contra el conjunto de test completo de MNIST provee la cifra real, en lugar de depender de una estimación teórica.
+El esquema de cuantización entera adoptado en este proyecto sigue el trabajo de Jacob et al. [1], sobre el cual se basa la cuantización entera de TensorFlow Lite [9]: inferencia con aritmética exclusivamente entera, acumulación en 32 bits y requantización mediante multiplicador de punto fijo. Ese trabajo propone además un procedimiento de entrenamiento que simula la cuantización (_quantization-aware training_); este proyecto no lo utiliza, sino que aplica el mismo esquema a la red ya entrenada (cuantización post-entrenamiento). Para una red del tamaño de la usada en este proyecto, la pérdida de exactitud esperada frente a la versión en punto flotante es mínima — el propio checkpoint de validación bit-exacta contra el conjunto de test completo de MNIST provee la cifra real, en lugar de depender de una estimación teórica.
 
 ## RISC-V y el procesador PicoRV32
 
 ### RISC-V como ISA abierta y extensible
 
-A diferencia de ISAs propietarias, la especificación RISC-V reserva explícitamente rangos de opcode (`custom-0`, `custom-1`, y `custom-2`/`custom-3` en variantes de 128 bits) para que los implementadores agreguen instrucciones propias sin colisionar con el conjunto estándar ni requerir autorización de terceros. Esta extensibilidad es la que habilita el mecanismo de aceleración por instrucción custom descripto más adelante.
+A diferencia de ISAs propietarias, la especificación RISC-V reserva explícitamente cuatro opcodes principales (`custom-0` a `custom-3`), que las extensiones estándar futuras evitarán [11], para que los implementadores agreguen instrucciones propias sin colisionar con el conjunto estándar ni requerir autorización de terceros. Esta extensibilidad es la que habilita el mecanismo de aceleración por instrucción custom descripto más adelante.
 
 ### PicoRV32: un core minimalista
 
-PicoRV32 [2], del autor Clifford Wolf, es una implementación abierta y sintetizable del ISA RV32I, de arquitectura **single-issue e in-order**: decodifica y ejecuta una instrucción por ciclo, sin lógica de emisión múltiple ni ejecución fuera de orden. Esta simplicidad deliberada (el proyecto se describe a sí mismo como _size-optimized_) es la razón central por la que la vía de aceleración elegida en este proyecto es de tipo SIMD/empaquetado y no una técnica de tipo superescalar, que requeriría hardware de emisión múltiple ausente en este core.
+PicoRV32 [2], de Claire Wolf, es una implementación abierta y sintetizable del ISA RV32I, de arquitectura **single-issue e in-order**: ejecuta las instrucciones de a una y en orden, sin lógica de emisión múltiple ni ejecución fuera de orden. Además es multiciclo: cada instrucción recorre varios estados de una máquina de control (búsqueda, lectura de registros, ejecución y, si corresponde, acceso a memoria), por lo que tarda entre 3 y 6 ciclos según su tipo (hasta 14 los desplazamientos), unos 4 en promedio [2]. Esta simplicidad deliberada (el proyecto se describe a sí mismo como _size-optimized_) es la razón central por la que la vía de aceleración elegida en este proyecto es de tipo SIMD/empaquetado y no una técnica de tipo superescalar, que requeriría hardware de emisión múltiple ausente en este core.
 
 ## Extensión de ISA vía coprocesador: la interfaz PCPI
 
 ### Protocolo de handshake
 
-PicoRV32 expone una interfaz de coprocesador liviana llamada **PCPI** (_Pico Co-Processor Interface_). Cuando el core decodifica una instrucción del espacio `custom-0` que no reconoce internamente, levanta la señal `pcpi_valid` y expone la instrucción cruda (`pcpi_insn`) y los valores de los registros fuente (`pcpi_rs1`, `pcpi_rs2`) a cualquier unidad externa conectada al puerto. Dicha unidad decodifica si la instrucción le corresponde, ejecuta el cómputo, y responde con `pcpi_ready` (más `pcpi_wr`/`pcpi_rd` si corresponde escribir un resultado al registro destino). Si ninguna unidad responde dentro de 16 ciclos, el core levanta una excepción de instrucción ilegal, preservando la compatibilidad con el ISA base cuando el periférico no está presente.
+PicoRV32 expone una interfaz de coprocesador liviana llamada **PCPI** (_Pico Co-Processor Interface_). Cuando el core encuentra una instrucción que no implementa —cualquiera, no solo las del espacio `custom-0`—, levanta la señal `pcpi_valid` y expone la instrucción cruda (`pcpi_insn`) y los valores de los registros fuente (`pcpi_rs1`, `pcpi_rs2`) a cualquier unidad externa conectada al puerto [2]. Dicha unidad decodifica si la instrucción le corresponde (en este proyecto, solo las del espacio `custom-0`), ejecuta el cómputo, y responde con `pcpi_ready` (más `pcpi_wr`/`pcpi_rd` si corresponde escribir un resultado al registro destino). Si ninguna unidad responde dentro de 16 ciclos, el core levanta una excepción de instrucción ilegal, preservando la compatibilidad con el ISA base cuando el periférico no está presente; una unidad que necesita más tiempo levanta `pcpi_wait` apenas reconoce la instrucción, y el core la espera hasta `pcpi_ready`.
 
-Es importante notar que esto **no constituye una arquitectura de dos procesadores**: sigue existiendo un único program counter y un único flujo de instrucciones; la unidad PCPI es una unidad de ejecución adicional —análoga en concepto a un coprocesador matemático clásico (FPU)— y no hay ejecución concurrente: el pipeline se detiene mientras la unidad PCPI calcula.
+Es importante notar que esto **no constituye una arquitectura de dos procesadores**: sigue existiendo un único program counter y un único flujo de instrucciones; la unidad PCPI es una unidad de ejecución adicional —análoga en concepto a un coprocesador matemático clásico (FPU)— y no hay ejecución concurrente: el core queda esperando mientras la unidad PCPI calcula.
 
 ### Por qué SIMD y no superescalar
 
@@ -189,7 +189,7 @@ A diferencia de la instrucción custom, un acelerador **memory-mapped** no intro
 
 \node[cpu, below=of cpuA] (cpuB) {PicoRV32};
 \node[unit, right=of cpuB] (pcpiB) {Unidad PCPI\\dot-product int8$\times$4 + acumulador};
-\draw[<->] (cpuB) -- (pcpiB) node[lbl, midway, above] {handshake PCPI\\(pipeline detenido)};
+\draw[<->] (cpuB) -- (pcpiB) node[lbl, midway, above] {handshake PCPI\\(el core espera)};
 \node[tag, left=0.3cm of cpuB] {(b)};
 
 \node[cpu, below=of cpuB] (cpuC) {PicoRV32};
@@ -199,7 +199,7 @@ A diferencia de la instrucción custom, un acelerador **memory-mapped** no intro
 \node[tag, left=0.3cm of cpuC] {(c)};
 
 \end{tikzpicture}
-\caption{Los tres niveles de aceleración comparados en este proyecto. (a) baseline en software puro: la propia CPU ejecuta el loop MAC contra la memoria de datos. (b) Nivel 1: instrucción custom vía PCPI, con el pipeline de la CPU detenido durante el cómputo. (c) Nivel 2: NPU memory-mapped; la CPU configura y dispara el acelerador y queda libre hasta sondear la señal de fin.}
+\caption{Los tres niveles de aceleración comparados en este proyecto. (a) baseline en software puro: la propia CPU ejecuta el loop MAC contra la memoria de datos. (b) Nivel 1: instrucción custom vía PCPI, con la CPU esperando a que la unidad termine el cómputo. (c) Nivel 2: NPU memory-mapped; la CPU configura y dispara el acelerador y queda libre hasta sondear la señal de fin.}
 \label{fig:niveles}
 \end{figure}
 
@@ -338,6 +338,8 @@ Este documento se presenta en etapa de anteproyecto: no existen todavía resulta
 
 - **Red y dataset**: MLP 784→32→10 sobre MNIST, con esquema de cuantización entera siguiendo Jacob et al. [1] (Tabla 3.1).
 - **Core base**: PicoRV32.
+- **Multiplicador del core**: `ENABLE_FAST_MUL` (multiplicador de un ciclo, implementado en bloques DSP), el mismo en los tres niveles. Es el baseline más exigente: con el multiplicador secuencial de PicoRV32 (40 ciclos por multiplicación [2]), parte del speedup de los niveles acelerados provendría del multiplicador lento del baseline y no del hardware propuesto.
+- **Loop de multiplicación-acumulación del baseline**: denso, sin saltear las entradas nulas (el 80,7 % de los píxeles de test vale 0), para que los tres niveles ejecuten exactamente las mismas 25.408 MACs y el speedup refleje solo el aporte del hardware.
 - **Placa FPGA**: Arty A7-100T (Xilinx Artix-7), por margen de BRAM para pesos, activaciones y buffers de la NPU.
 - **Nivel 1**: instrucción custom de dot-product int8×4 vía interfaz PCPI.
 - **Nivel 2**: acelerador NPU memory-mapped con arreglo de 8 a 16 MACs.
@@ -376,3 +378,5 @@ El detalle de fases, dependencias entre etapas y cronograma tentativo se present
 9. Google. TensorFlow Lite – "Quantization specification" (documentación oficial). www.tensorflow.org/lite/performance/quantization_spec
 
 10. IEEE. *IEEE Taxonomy*, January 2024, v1.03.
+
+11. RISC-V International. *The RISC-V Instruction Set Manual, Volume I: Unprivileged Architecture*, apéndice «RV32/64G Instruction Set Listings». Versión publicada el 26/09/2026. github.com/riscv/riscv-isa-manual
