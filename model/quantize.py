@@ -109,6 +109,17 @@ def forward_int(x_u8, q):
     return acc1.astype(np.int32), h, acc2.astype(np.int32)
 
 
+def load_quantized(path=HERE / "artifacts"):
+    """Lee los enteros congelados (mlp_int8.npz) y las escalas (mlp_int8.json).
+
+    Devuelve (q, s), como quantize(), pero sin recalcular nada: son los valores de referencia.
+    """
+    q = dict(np.load(path / "mlp_int8.npz"))
+    q["M0"], q["n"] = int(q["M0"]), int(q["n"])
+    s = json.loads((path / "mlp_int8.json").read_text())["scales"]
+    return q, s
+
+
 def show_example(i, x_u8, label, w, q, s):
     """Sigue una imagen por todo el camino entero, comparando cada paso con el float."""
     h_f, z_f = forward(x_u8[None].astype(np.float32) / 255, w)
