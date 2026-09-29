@@ -3,11 +3,8 @@
 /antecedentes/
 /normas/
 
-# Bitácora personal de trabajo (notas para armar el informe)
-/docs/bitacora.md
-
-# Guías personales de estudio (texto, figuras y el script que las genera)
-/docs/guia_cuantizacion/
+# Notas personales: la bitácora (material para el informe) y las guías de estudio
+/docs/notes/
 
 # Python
 .venv/
@@ -16,6 +13,9 @@ __pycache__/
 
 # Dataset MNIST (lo descarga torchvision la primera vez que se entrena)
 /model/data/
+
+# Binarios y vectores de prueba de la referencia en C (se regeneran con make -C reference check)
+/reference/build/
 
 # FPGA toolchains (ajustar según lo que se termine usando)
 *.jou
