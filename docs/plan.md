@@ -61,7 +61,7 @@ Dataset / train / test split, función de loss, epochs, accuracy. Solo lo operat
 3. Exportar los pesos entrenados y cargarlos en el forward pass NumPy de la Etapa 1.
 
 ### Checkpoint de salida
-El forward pass NumPy da resultados **idénticos** a PyTorch con los pesos entrenados.
+El forward pass NumPy da las **mismas predicciones** que PyTorch con los pesos entrenados, en las 10.000 imágenes de test, y las activaciones y los logits difieren solo por redondeo (menos de 1e-4). En float no se puede exigir igualdad bit a bit: sumar en otro orden cambia el redondeo. La igualdad bit a bit se exige a partir de la Etapa 3, donde todas las cuentas son enteras y el orden de la suma no altera el resultado.
 
 ---
 
